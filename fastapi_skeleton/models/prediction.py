@@ -1,6 +1,17 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class HousePredictionResult(BaseModel):
-    median_house_value: int
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "median_house_value": 452600.0,
+                    "currency": "USD",
+                }
+            ]
+        }
+    )
+
+    median_house_value: float
     currency: str = "USD"
