@@ -259,6 +259,15 @@ Handles the three things a `Dockerfile` can't:
 2. **Secret injection** — `API_KEY` comes from your shell environment, never baked into the image
 3. **Restart policy + resource limits** — `unless-stopped`, 512MB memory cap, 1 CPU
 
+**Image tagging** — the compose file tags the image as both `1.0` and `latest`:
+
+```
+fastapi-ml-skeleton-app:1.0      ← pinned, never changes
+fastapi-ml-skeleton-app:latest   ← always points to newest
+```
+
+`latest` alone is a moving target — if a base image update (e.g. Python 3.11 → 3.12) breaks something, you have no pinned version to roll back to. With a version tag you can always run the last known-good image. To upgrade, bump the version in `docker-compose.yml` and rebuild.
+
 ### `.dockerignore`
 
 Tells Docker what to exclude from the build context. Without it, Docker would send `.git/`, `docs/`, `tests/`, and `.env` to the build daemon — adding size and potentially leaking secrets into image layers.
