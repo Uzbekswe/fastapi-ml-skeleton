@@ -21,6 +21,21 @@ services:
       context: .
       dockerfile: Dockerfile
 
+    # ── Image name + version tag ───────────────────
+    # Tagging with a version means you always know
+    # exactly what code is running. `latest` alone is
+    # a moving target — if Python 3.11 → 3.12 and
+    # something breaks, you can't roll back to a
+    # specific known-good image.
+    #
+    # This produces TWO tags on every `docker compose build`:
+    #   fastapi-ml-skeleton-app:1.0    ← pinned, never changes
+    #   fastapi-ml-skeleton-app:latest ← always points to newest
+    #
+    # To upgrade: bump the version here (e.g. 1.0 → 1.1),
+    # then run `docker compose build`. Both tags update.
+    image: fastapi-ml-skeleton-app:1.0
+
     container_name: fastapi-ml-skeleton
 
     # ── Port mapping ──────────────────────────────────
