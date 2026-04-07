@@ -1,0 +1,100 @@
+# =============================================================
+#  docker-compose.yml
+# =============================================================
+#  Usage:
+#    Build & run:     docker compose up --build
+#    Run detached:    docker compose up -d --build
+#    View logs:       docker compose logs -f
+#    Stop:            docker compose down
+#    Rebuild:         docker compose build --no-cache
+#
+#  This file does THREE things the Dockerfile can't:
+#    1. Port mapping   (-p host:container)
+#    2. Env var injection (without baking secrets into image)
+#    3. Orchestration  (restart policy, health check, limits)
+# =============================================================
+
+services:
+  # ── ML Prediction API ──────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: fastapi-ml-skeleton
+
+    # ── Port mapping ──────────────────────────────────
+    # Maps host port 8000 → container port 8000.
+    # After this, http://localhost:8000/docs opens the
+    # Swagger UI from your browser.
+    #
+    # Format: "HOST_PORT:CONTAINER_PORT"
+    # You can change the host side without rebuilding:
+    #   ports: - "9000:8000"  # now it's localhost:9000
+    ports:
+      - "8000:8000"
+
+    # ── Environment variables ─────────────────────────
+    # These override any defaults set in the Dockerfile's
+    # ENV instruction or the app's .env file.
+    #
+    # WHY here instead of baked into the image?
+    # Because secrets (API_KEY) should NEVER be in the
+    # image. Images get pushed to registries, shared
+    # between teams, cached on CI servers. Anyone who
+    # pulls the image can `docker inspect` or extract
+    # layers to find baked-in secrets.
+    #
+    # The pattern: configuration that varies by environment
+    # (dev/staging/prod) goes in compose, not Dockerfile.
+    environment:
+      - API_KEY=${API_KEY:-change-me-in-production}
+      - IS_DEBUG=${IS_DEBUG:-false}
+      - DEFAULT_MODEL_PATH=./sample_model/lin_reg_california_housing_model.joblib
+
+    # ── Health check ──────────────────────────────────
+    # This OVERRIDES the Dockerfile HEALTHCHECK when
+    # running via compose. Both exist because:
+    #   - Dockerfile HEALTHCHECK: for `docker run` (no compose)
+    #   - Compose healthcheck: for `docker compose up`
+    #
+    # Having both means the container is health-checked
+    # regardless of how it's launched.
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/heartbeat"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+    # ── Restart policy ────────────────────────────────
+    # "unless-stopped": if the container crashes, Docker
+    # restarts it automatically. Only stops if you
+    # explicitly run `docker compose down` or `docker stop`.
+    #
+    # Other options:
+    #   "no"           — never restart (default)
+    #   "always"       — restart even after `docker stop`
+    #   "on-failure"   — restart only on non-zero exit
+    restart: unless-stopped
+
+    # ── Resource limits ───────────────────────────────
+    # Prevents the container from consuming all host
+    # resources. Without limits, a memory leak in the
+    # ML model or a batch of large requests could OOM
+    # the entire host machine, taking down other services.
+    #
+    # For this tiny sklearn model:
+    #   - 512MB is plenty (model is <1KB, sklearn ~50MB)
+    #   - 1 CPU core is sufficient for linear regression
+    #
+    # For larger models (PyTorch, transformers), you'd
+    # increase to 2-4GB memory and 2+ CPUs.
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+        reservations:
+          memory: 256M
+          cpus: "0.25"
