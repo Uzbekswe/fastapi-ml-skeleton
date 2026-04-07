@@ -1,8 +1,13 @@
 # FastAPI ML Skeleton — Modernized
 
-A production-ready FastAPI skeleton for serving machine learning models, modernized from [eightBEC/fastapi-ml-skeleton](https://github.com/eightBEC/fastapi-ml-skeleton) to follow current FastAPI best practices.
+> **Learning & Practice Project** — This repo exists for hands-on learning. Every file was written or rewritten deliberately, with the goal of understanding *why* each pattern exists, not just copying boilerplate. If you're studying FastAPI, Docker, or ML serving, you're in the right place.
 
-The original repo provides a clean starting point for serving ML models behind a REST API. This fork takes it through a **34-change, 7-layer modernization** — updating deprecated patterns, fixing bugs, and aligning every file with the FastAPI and Pydantic v2 documentation.
+A production-ready FastAPI skeleton for serving machine learning models, built in two phases:
+
+- **FastAPI layer** — modernized from [eightBEC/fastapi-ml-skeleton](https://github.com/eightBEC/fastapi-ml-skeleton) through a 34-change, 7-layer audit. Every deprecated pattern, wrong type, and missing error handler was identified and fixed.
+- **Docker layer** — implemented from scratch. The `Dockerfile`, `docker-compose.yml`, and `.dockerignore` were written line-by-line with inline comments explaining every decision: multi-stage builds, layer caching, non-root users, health checks, secret injection, and resource limits.
+
+The goal is a repo you can clone, run, and learn from — not just a template to copy-paste.
 
 ## Target Versions
 
@@ -116,30 +121,147 @@ tests/
 
 ## Quick Start
 
+### Option A — Docker (recommended, no Python setup needed)
+
+**Prerequisites:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running.
+
 ```bash
-# Install dependencies
-poetry install
+# 1. Clone the repo
+git clone https://github.com/Uzbekswe/fastapi-ml-skeleton.git
+cd fastapi-ml-skeleton
 
-# Create .env from example
-cp .env.example .env
-# Edit .env — set API_KEY to any secret string
+# 2. Build the image and start the container
+docker compose up --build
 
-# Run the server
-uvicorn fastapi_skeleton.main:app
-
-# Open interactive docs
+# 3. Open Swagger UI in your browser
 open http://localhost:8000/docs
 ```
 
-Authenticate in Swagger UI by clicking **Authorize** and entering your `API_KEY` in the `X-API-Key` header field.
+That's it. Docker handles Python, dependencies, and the model — nothing to install locally.
+
+To run in the background:
+
+```bash
+docker compose up -d --build
+
+# View logs
+docker compose logs -f
+
+# Stop the container
+docker compose down
+```
+
+**Authenticate in Swagger UI:** click **Authorize** → enter `change-me-in-production` in the `X-API-Key` field (the default from `docker-compose.yml`).
+
+To use your own key, set it before running:
+
+```bash
+API_KEY=my-secret-key docker compose up --build
+```
+
+---
+
+### Option B — Local (Poetry)
+
+**Prerequisites:** Python 3.11+, [Poetry](https://python-poetry.org/docs/#installation).
+
+```bash
+# 1. Clone the repo
+git clone https://github.com/Uzbekswe/fastapi-ml-skeleton.git
+cd fastapi-ml-skeleton
+
+# 2. Install dependencies
+poetry install
+
+# 3. Create .env from example and set your API key
+cp .env.example .env
+# Edit .env — change API_KEY to any string you want
+
+# 4. Run the server
+poetry run uvicorn fastapi_skeleton.main:app --reload
+
+# 5. Open interactive docs
+open http://localhost:8000/docs
+```
+
+**Authenticate in Swagger UI:** click **Authorize** → enter the `API_KEY` value you set in `.env`.
+
+---
+
+### Making a prediction
+
+Once the server is running (either way), try the prediction endpoint:
+
+```bash
+curl -X POST http://localhost:8000/api/model/predict \
+  -H "X-API-Key: change-me-in-production" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "MedInc": 8.3252,
+    "HouseAge": 41.0,
+    "AveRooms": 6.984,
+    "AveBedrms": 1.024,
+    "Population": 322.0,
+    "AveOccup": 2.555,
+    "Latitude": 37.88,
+    "Longitude": -122.23
+  }'
+```
+
+Expected response:
+
+```json
+{"median_house_value": 452600.0}
+```
 
 ## Run Tests
 
+**Requires Option B (local Poetry setup).**
+
 ```bash
-pytest
+poetry run pytest
 ```
 
-19 tests, including parametrized edge cases for input validation.
+19 tests: auth rejection, health check, prediction correctness, and parametrized edge cases for every `Field()` constraint.
+
+## Docker Files Explained
+
+The Docker setup was written from scratch as a learning exercise. Every line has a comment explaining *why* it exists. Here's the high-level picture:
+
+### `Dockerfile` — multi-stage build
+
+```
+Stage 1 (deps):        python:3.11-slim
+                       └── pip install poetry
+                       └── COPY pyproject.toml poetry.lock
+                       └── poetry export → requirements.txt
+                           (Poetry is DISCARDED after this)
+
+Stage 2 (production):  python:3.11-slim
+                       └── apt install curl       (for health check)
+                       └── create non-root user   (security)
+                       └── pip install -r requirements.txt
+                       └── COPY sample_model/
+                       └── COPY fastapi_skeleton/
+                       └── HEALTHCHECK + CMD
+```
+
+Key concepts exercised:
+- **Multi-stage builds** — Poetry (~30MB) never enters the production image
+- **Layer caching** — dependencies copied before code, so code edits don't re-run `pip install`
+- **Non-root user** — `appuser:1001` reduces blast radius if the app is compromised
+- **`HEALTHCHECK`** — Docker polls `/api/health/heartbeat` every 30s to report container health
+
+### `docker-compose.yml`
+
+Handles the three things a `Dockerfile` can't:
+1. **Port mapping** — `8000:8000` (host:container)
+2. **Secret injection** — `API_KEY` comes from your shell environment, never baked into the image
+3. **Restart policy + resource limits** — `unless-stopped`, 512MB memory cap, 1 CPU
+
+### `.dockerignore`
+
+Tells Docker what to exclude from the build context. Without it, Docker would send `.git/`, `docs/`, `tests/`, and `.env` to the build daemon — adding size and potentially leaking secrets into image layers.
 
 ## What You Can Learn From This Repo
 
@@ -161,6 +283,13 @@ The full audit documents with old-vs-new comparisons are in [`docs/modernization
 Based on [eightBEC/fastapi-ml-skeleton](https://github.com/eightBEC/fastapi-ml-skeleton) by [eightBEC](https://github.com/eightBEC). Licensed under Apache License 2.0.
 
 ## Changelog
+
+### v2.1.0 — Docker setup (implemented from scratch)
+
+- `Dockerfile`: two-stage build — Poetry export stage → slim production runtime
+- `docker-compose.yml`: port mapping, environment variable injection, health check, restart policy, resource limits
+- `.dockerignore`: excludes `.git`, tests, docs, `.env`, scripts from the build context
+- Fixed `poetry.lock` to include `pydantic-settings` (was missing, caused startup failure)
 
 ### v2.0.0 — Modernization (34 changes across 7 layers)
 
